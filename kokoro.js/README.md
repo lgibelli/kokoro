@@ -75,6 +75,22 @@ splitter.close();
 // splitter.flush();
 ```
 
+### Custom phonemizer
+
+By default, text is turned into phonemes with eSpeak NG. To use another G2P, pass a `phonemizer`: a function of the text and the language (`"a"` for American English, `"b"` for British English) that returns the phonemes. `generate()` and `stream()` use it in place of eSpeak NG.
+
+```js
+import { KokoroTTS, phonemize } from "kokoro-js";
+
+const tts = await KokoroTTS.from_pretrained("onnx-community/Kokoro-82M-v1.0-ONNX", {
+  dtype: "q8",
+  phonemizer: async (text, language) => {
+    // e.g. a dictionary of your own words first, then the default (eSpeak NG)
+    return phonemize(text, language);
+  },
+});
+```
+
 ## Voices/Samples
 
 > [!TIP]

@@ -13,6 +13,14 @@ const SAMPLE_RATE = 24000;
  */
 
 /**
+ * A function that turns text into the phonemes Kokoro reads, in place of the default (espeak-ng).
+ * @callback Phonemizer
+ * @param {string} text The text
+ * @param {"a"|"b"} language "a" for American English, "b" for British English (the voice's first letter)
+ * @returns {Promise<string>|string} The phonemes
+ */
+
+/**
  * @typedef {Object} StreamProperties
  * @property {RegExp} [split_pattern] The pattern to split the input text. If unset, the default sentence splitter will be used.
  * @typedef {GenerateOptions & StreamProperties} StreamGenerateOptions
@@ -23,10 +31,13 @@ export class KokoroTTS {
    * Create a new KokoroTTS instance.
    * @param {import('@huggingface/transformers').StyleTextToSpeech2Model} model The model
    * @param {import('@huggingface/transformers').PreTrainedTokenizer} tokenizer The tokenizer
+   * @param {Object} [options] Additional options
+   * @param {Phonemizer} [options.phonemizer] Turns text into phonemes, in place of the default (espeak-ng)
    */
-  constructor(model, tokenizer) {
+  constructor(model, tokenizer, { phonemizer = null } = {}) {
     this.model = model;
     this.tokenizer = tokenizer;
+    this.phonemizer = phonemizer ?? phonemize;
   }
 
   /**
@@ -36,14 +47,15 @@ export class KokoroTTS {
    * @param {"fp32"|"fp16"|"q8"|"q4"|"q4f16"} [options.dtype="fp32"] The data type to use.
    * @param {"wasm"|"webgpu"|"cpu"|null} [options.device=null] The device to run the model on.
    * @param {import("@huggingface/transformers").ProgressCallback} [options.progress_callback=null] A callback function that is called with progress information.
+   * @param {Phonemizer} [options.phonemizer=null] Turns text into phonemes, in place of the default (espeak-ng).
    * @returns {Promise<KokoroTTS>} The loaded model
    */
-  static async from_pretrained(model_id, { dtype = "fp32", device = null, progress_callback = null } = {}) {
+  static async from_pretrained(model_id, { dtype = "fp32", device = null, progress_callback = null, phonemizer = null } = {}) {
     const model = StyleTextToSpeech2Model.from_pretrained(model_id, { progress_callback, dtype, device });
     const tokenizer = AutoTokenizer.from_pretrained(model_id, { progress_callback });
 
     const info = await Promise.all([model, tokenizer]);
-    return new KokoroTTS(...info);
+    return new KokoroTTS(...info, { phonemizer });
   }
 
   get voices() {
@@ -74,7 +86,7 @@ export class KokoroTTS {
   async generate(text, { voice = "af_heart", speed = 1 } = {}) {
     const language = this._validate_voice(voice);
 
-    const phonemes = await phonemize(text, language);
+    const phonemes = await this.phonemizer(text, language);
     const { input_ids } = this.tokenizer(phonemes, {
       truncation: true,
     });
@@ -135,7 +147,7 @@ export class KokoroTTS {
       throw new Error("Invalid input type. Expected string or TextSplitterStream.");
     }
     for await (const sentence of splitter) {
-      const phonemes = await phonemize(sentence, language);
+      const phonemes = await this.phonemizer(sentence, language);
       const { input_ids } = this.tokenizer(phonemes, {
         truncation: true,
       });
@@ -164,4 +176,4 @@ export const env = {
   },
 };
 
-export { TextSplitterStream };
+export { TextSplitterStream, phonemize };
